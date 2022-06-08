@@ -50,6 +50,7 @@ let x86header =
     + "extern printc\n"
     + "extern checkargc\n"
     + "global asm_main\n"
+    + "default rel\n"
     + "section .data\n"
     + "glovars: dq 0\n"
     + "section .text\n"

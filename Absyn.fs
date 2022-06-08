@@ -13,49 +13,46 @@ module Absyn
 type typ =
   | TypI                             (* Type int                    *)
   | TypC                             (* Type char                   *)
-  | TypF (*float32*)
-  | TypD (*double*)
-  | TypL (*long*)
-  | TypS (*string*)
-  | TypB (*boolean*)
+  | TypF                             (* Type float32                *)
+  | TypD                             (* Type double                 *)
+  | TypS                             (* Type string                 *)
+  | TypB                             (* Type boolean                *)
   | TypA of typ * int option         (* Array type                  *)
   | TypP of typ                      (* Pointer type                *)
-  | TypF
-  | TypD
-  | TypS
-  
-and expr =                           // 表达式，右值                                                
-  // | PreInc of access                
-  // | PreDec of access
-  | AssignPrim of string * access * expr
+                                                                   
+and expr =                           // 表达式，右值
+  | PreInc of access                 (* ++i or ++a[e]               *)
+  | PreDec of access                 (* --i or --a[e]               *)                                                
   | Access of access                 (* x    or  *p    or  a[e]     *) //访问左值（右值）
   | Assign of access * expr          (* x=e  or  *p=e  or  a[e]=e   *)
+  | AssignPrim of string *access * expr      (* x+=e or  *p+=e or  a[e]+=e  *)
   | Addr of access                   (* &x   or  &*p   or  &a[e]    *)
   | CstI of int                      (* Constant                    *)
   | CstF of float
+  | CstB of bool
   | CstD of double
   | CstS of string
+  | CstC of char
+  | Print of string * expr
   | Prim1 of string * expr           (* Unary primitive operator    *)
   | Prim2 of string * expr * expr    (* Binary primitive operator   *)
-  | Prim3 of expr * expr * expr
-  | Prim4 of string * access     (* i++ i-- ++i --i   *)
+  | Prim3 of expr * expr * expr      (*  三目运算 ? ：                        *)
   | Andalso of expr * expr           (* Sequential and              *)
   | Orelse of expr * expr            (* Sequential or               *)
   | Call of string * expr list       (* Function call f(...)        *)
-  
+                                                                   
 and access =                         //左值，存储的位置                                            
   | AccVar of string                 (* Variable access        x    *) 
   | AccDeref of expr                 (* Pointer dereferencing  *p   *)
   | AccIndex of access * expr        (* Array indexing         a[e] *)
-  
-and stmt =                                                         
+                                                                   
+and stmt = 
   | Switch of expr * stmt list
   | Case of expr * stmt
   | Default of stmt 
-  | For of expr * expr * expr * stmt 
   | DoUntil of stmt * expr
-  | DoWhile of stmt * expr
-  | ForIn of access * expr * expr * expr * stmt 
+  | DoWhile of stmt * expr                                                        
+  | For of expr * expr * expr * stmt (* for loop                    *)
   | If of expr * stmt * stmt         (* Conditional                 *)
   | While of expr * stmt             (* While loop                  *)
   | Expr of expr                     (* Expression statement   e;   *)
@@ -65,7 +62,6 @@ and stmt =
 
 and stmtordec =                                                    
   | Dec of typ * string              (* Local variable declaration  *)
-  | DecAndAssign of typ * string * expr //=声明并赋值
   | Stmt of stmt                     (* A statement                 *)
   | DecAndAssign of typ * string * expr
 
@@ -73,7 +69,7 @@ and stmtordec =
 and topdec = 
   | Fundec of typ option * string * (typ * string) list * stmt
   | Vardec of typ * string
-  | VardecAndAssign of typ * string * expr //=声明并赋值
+  | VardecAndAssign of typ * string * expr
 
 // 程序是顶级声明的列表
 and program = 

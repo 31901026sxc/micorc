@@ -56,7 +56,23 @@ type Var =
     | Locvar of int (* address relative to bottom of frame *)
 
 (* The variable environment keeps track of global and local variables, and
-   keeps track of next available offset for local variables *)
+   keeps track of next available offset for local variables 
+   
+ex1.c下面的的全局声明
+
+int g ;
+int h[3] 
+
+构造的环境如下：
+
+h 是整型数组，长度为 3，g是整数，下一个空闲位置是 5
+
+([("h", (Glovar 4, TypA (TypI, Some 3)));
+ ("g", (Glovar 0, TypI))], 5)  
+
+实际存储布局如下：
+ (0,0)(1,0)(2,0)(3,0) (4,1) ...... 
+*)
 
 type VarEnv = (Var * typ) Env * int
 
@@ -84,7 +100,8 @@ let rec allocateWithMsg (kind: int -> Var) (typ, x) (varEnv: VarEnv) =
 and allocate (kind: int -> Var) (typ, x) (varEnv: VarEnv) : VarEnv * instr list =
 
     msg $"allocate called!{(x, typ)}"
-
+ 
+    // newloc 下个空闲存储位置
     let (env, newloc) = varEnv
 
     match typ with
@@ -103,6 +120,7 @@ and allocate (kind: int -> Var) (typ, x) (varEnv: VarEnv) : VarEnv * instr list 
         let code = [ INCSP 1 ]
 
         // info (fun () -> printf "new varEnv: %A\n" newEnv) // 调试 显示分配后环境变化
+        
         (newEnv, code)
 
 (* Bind declared parameters in env: *)
@@ -127,10 +145,6 @@ let makeGlobalEnvs (topdecs: topdec list) : VarEnv * FunEnv * instr list =
             match dec with
             | Vardec (typ, var) ->
                 let (varEnv1, code1) = allocateWithMsg Glovar (typ, var) varEnv
-                let (varEnvr, funEnvr, coder) = addv decr varEnv1 funEnv
-                (varEnvr, funEnvr, code1 @ coder)
-            | VardecAndAssign (typ, x, e) -> //= 返回环境
-                let (varEnv1, code1) = allocate Glovar (typ, x) varEnv
                 let (varEnvr, funEnvr, coder) = addv decr varEnv1 funEnv
                 (varEnvr, funEnvr, code1 @ coder)
             | Fundec (tyOpt, f, xs, body) -> addv decr varEnv ((f, ($"{newLabel ()}_{f}", tyOpt, xs)) :: funEnv)
@@ -167,7 +181,17 @@ let rec cStmt stmt (varEnv: VarEnv) (funEnv: FunEnv) : instr list =
             @ [ GOTO labend ]
               @ [ Label labelse ]
                 @ cStmt stmt2 varEnv funEnv 
-                    @ [ Label labend ]
+                @ [ Label labend ]
+    | For(e1, e2, e3, body) ->         
+        let labbegin = newLabel()
+        let labtest  = newLabel()
+        cExpr e1 varEnv funEnv @ [INCSP -1]
+        @ [GOTO labtest; Label labbegin] 
+        @ cStmt body varEnv funEnv
+        @ cExpr e3 varEnv funEnv @ [INCSP -1]
+        @ [Label labtest]
+        @ cExpr e2 varEnv funEnv 
+        @ [IFNZRO labbegin]
     | While (e, body) ->
         let labbegin = newLabel ()
         let labtest = newLabel ()
@@ -176,41 +200,27 @@ let rec cStmt stmt (varEnv: VarEnv) (funEnv: FunEnv) : instr list =
         @ cStmt body varEnv funEnv
           @ [ Label labtest ]
             @ cExpr e varEnv funEnv @ [ IFNZRO labbegin ]
-
-    | For(e1, e2, e3, body) ->         
-      let labbegin = newLabel()
-      let labtest  = newLabel()
-
-      cExpr e1 varEnv funEnv @ [INCSP -1]
-            @ [GOTO labtest; Label labbegin] 
-                @ cStmt body varEnv funEnv
-                    @ cExpr e3 varEnv funEnv @ [INCSP -1]
-                        @ [Label labtest] 
-                            @ cExpr e2 varEnv funEnv 
-                                @ [IFNZRO labbegin]
     | DoWhile (body, e) ->
         let labbegin = newLabel ()
         let labtest = newLabel ()
-
         cStmt body varEnv funEnv
-            @[ GOTO labtest]
-                @[Label labbegin ] 
-                @ cStmt body varEnv funEnv
-                @ [ Label labtest ] 
-                @ cExpr e varEnv funEnv 
-                @ [ IFNZRO labbegin ] 
+        @[GOTO labtest]
+        @[Label labbegin] 
+        @ cStmt body varEnv funEnv
+        @[Label labtest] 
+        @ cExpr e varEnv funEnv 
+        @[IFNZRO labbegin]
+
     | DoUntil (body, e) ->
         let labbegin = newLabel ()
         let labtest = newLabel ()
-
         cStmt body varEnv funEnv
-            @[ GOTO labtest] 
-                @[Label labbegin ] 
-                @ cStmt body varEnv funEnv
-                @ [ Label labtest ] 
-                @ cExpr e varEnv funEnv  
-                @ [ IFZERO labbegin ]
-
+        @[GOTO labtest] 
+        @[Label labbegin] 
+        @ cStmt body varEnv funEnv
+        @[Label labtest] 
+        @ cExpr e varEnv funEnv  
+        @[IFZERO labbegin]
     | Switch (e, cases) ->
         let rec searchcases c =
             match c with
@@ -234,9 +244,6 @@ let rec cStmt stmt (varEnv: VarEnv) (funEnv: FunEnv) : instr list =
         cExpr e varEnv funEnv 
           @ searchcases cases
             @[INCSP -1]
-
-    
-                  
     | Expr e -> cExpr e varEnv funEnv @ [ INCSP -1 ]
     | Block stmts ->
 
@@ -259,13 +266,12 @@ and cStmtOrDec stmtOrDec (varEnv: VarEnv) (funEnv: FunEnv) : VarEnv * instr list
     match stmtOrDec with
     | Stmt stmt -> (varEnv, cStmt stmt varEnv funEnv)
     | Dec (typ, x) -> allocateWithMsg Locvar (typ, x) varEnv
-    | DecAndAssign (typ, x, e) -> //=给x赋值e
+    | DecAndAssign (typ, x, e) -> 
+        //x的类型声明，和上面类似，分配空间
         let (varEnv, code) = allocate Locvar (typ, x) varEnv
+        //返回值，赋值e给变量x，然后缩减栈
+        (varEnv,code@ (cExpr (Assign((AccVar x), e)) varEnv funEnv)@ [ INCSP -1 ])
 
-        (varEnv,
-         code
-         @ (cExpr (Assign((AccVar x), e)) varEnv funEnv)
-           @ [ INCSP -1 ])//赋完值缩减栈
 (* Compiling micro-C expressions:
 
    * e       is the expression to compile
@@ -285,19 +291,7 @@ and cExpr (e: expr) (varEnv: VarEnv) (funEnv: FunEnv) : instr list =
         cAccess acc varEnv funEnv
         @ cExpr e varEnv funEnv @ [ STI ]
     | CstI i -> [ CSTI i ]
-    | CstF i -> [ CSTF(System.BitConverter.ToInt32((System.BitConverter.GetBytes(float32 (i))), 0)) ] //=
-    | CstD i -> //=
-        [ CSTD(
-              System.BitConverter.ToInt32((System.BitConverter.GetBytes(i)), 4),
-              System.BitConverter.ToInt32((System.BitConverter.GetBytes(i)), 0)
-          ) ]
-    | CstL i -> //=
-        [ CSTL(
-              System.BitConverter.ToInt32((System.BitConverter.GetBytes(i)), 4),
-              System.BitConverter.ToInt32((System.BitConverter.GetBytes(i)), 0)
-          ) ]
-    | CstC i -> [ CSTC((int32) (System.BitConverter.ToInt16((System.BitConverter.GetBytes(char (i))), 0))) ] //=
-    | Addr acc -> cAccess acc varEnv funEnv     
+    | Addr acc -> cAccess acc varEnv funEnv
     | Prim1 (ope, e1) ->
         cExpr e1 varEnv funEnv
         @ (match ope with
@@ -321,42 +315,28 @@ and cExpr (e: expr) (varEnv: VarEnv) (funEnv: FunEnv) : instr list =
              | ">" -> [ SWAP; LT ]
              | "<=" -> [ SWAP; LT; NOT ]
              | _ -> raise (Failure "unknown primitive 2"))
-    | Prim3 (e, e1, e2)    -> 
-        let labelse = newLabel ()
-        let labend = newLabel ()
-        cExpr e varEnv funEnv 
-        @ [ IFZERO labelse ] 
-          @ cExpr e1 varEnv funEnv 
-            @ [ GOTO labend ]
-              @ [ Label labelse ]
-                @ cExpr e2 varEnv funEnv 
-                  @ [ Label labend ] 
-    | Prim4 (ope, e1) ->
-        (match ope with
-           | "I++" -> //先找到变量地址，复制一份后取值，将原值与地址交换（保存一下原值），之后同++i，最后赋值后清除计算结果省空间
-               cAccess e1 varEnv funEnv
-                @[ DUP;LDI;SWAP;DUP;LDI;CSTI 1; ADD;STI;INCSP -1 ]
-           | "I--" -> //类同i++
-               cAccess e1 varEnv funEnv 
-                @ [ DUP;LDI;SWAP;DUP;LDI;CSTI -1; ADD;STI;INCSP -1 ]
-           | "++I" -> //找到变量地址后dup一份，取值，加常量1，add操作，将计算结果赋值
-            cAccess e1 varEnv funEnv
-                @[ DUP;LDI;CSTI 1; ADD;STI ]
-           | "--I" -> //类同i--  
-            cAccess (e1) varEnv funEnv 
-                @ [ DUP;LDI;CSTI -1; ADD;STI ]
-           | _ -> raise (Failure "unknown primitive 4"))
+    | Prim3(e1, e2, e3) ->
+        let labelse = newLabel()
+        let labend  = newLabel()
+        cExpr e1 varEnv funEnv @ [IFZERO labelse] 
+        @ cExpr e2 varEnv funEnv @ [GOTO labend]
+        @ [Label labelse] @ cExpr e3 varEnv funEnv
+        @ [Label labend]
 
+    | PreInc acc     -> 
+        cAccess acc varEnv funEnv @ [DUP] @ [LDI] @ [CSTI 1] @ [ADD] @ [STI]
+    | PreDec acc     -> 
+        cAccess acc varEnv funEnv @ [DUP] @ [LDI] @ [CSTI 1] @ [SUB] @ [STI]  
     | AssignPrim (ope, e1, e2) ->
         cAccess e1 varEnv funEnv
-          @[DUP;LDI]
-             @ cExpr e2 varEnv funEnv
-                @ (match ope with
-                    | "+=" -> [ ADD;STI ]
-                    | "-=" -> [ SUB;STI ]
-                    | "*=" -> [ MUL;STI ]
-                    | "/=" -> [ DIV;STI ]
-                    | _ -> raise (Failure "unknown AssignPrim"))
+        @[DUP;LDI]
+        @ cExpr e2 varEnv funEnv
+        @ (match ope with
+            | "+=" -> [ ADD;STI ]
+            | "-=" -> [ SUB;STI ]
+            | "*=" -> [ MUL;STI ]
+            | "/=" -> [ DIV;STI ]
+            | _ -> raise (Failure "unknown AssignPrim"))
     | Andalso (e1, e2) ->
         let labend = newLabel ()
         let labfalse = newLabel ()
@@ -390,6 +370,7 @@ and cAccess access varEnv funEnv : instr list =
         match lookup (fst varEnv) x with
         // x86 虚拟机指令 需要知道是全局变量 [GVAR addr]
         // 栈式虚拟机Stack VM 的全局变量的地址是 栈上的偏移 用 [CSTI addr] 表示
+        // F# ! 操作符 取引用类型的值
         | Glovar addr, _ ->
             if !isX86Instr then
                 [ GVAR addr ]
@@ -487,22 +468,22 @@ let compileToFile program fname =
     
     // 面向 x86 的虚拟机指令 略有差异，主要是地址偏移的计算方式不同
     // 单独生成 x86 的指令
-    // isX86Instr := true
-    // let x86instrs = cProgram program
-    // writeInstr (fname + ".insx86") x86instrs
+    isX86Instr := true
+    let x86instrs = cProgram program
+    writeInstr (fname + ".insx86") x86instrs
 
-    // let x86asmlist = List.map emitx86 x86instrs
-    // let x86asmbody =
-    //     List.fold (fun asm ins -> asm + ins) "" x86asmlist
+    let x86asmlist = List.map emitx86 x86instrs
+    let x86asmbody =
+        List.fold (fun asm ins -> asm + ins) "" x86asmlist
 
-    // let x86asm =
-    //     (x86header + beforeinit !argc + x86asmbody)
+    let x86asm =
+        (x86header + beforeinit !argc + x86asmbody)
 
-    // printfn $"x86 assembly saved in file:\n\t{fname}.asm"
-    // File.WriteAllText(fname + ".asm", x86asm)
+    printfn $"x86 assembly saved in file:\n\t{fname}.asm"
+    File.WriteAllText(fname + ".asm", x86asm)
 
-    // // let deinstrs = decomp bytecode
-    // // printf "deinstrs: %A\n" deinstrs
+    // let deinstrs = decomp bytecode
+    // printf "deinstrs: %A\n" deinstrs
     intsToFile bytecode (fname + ".out")
 
     instrs
