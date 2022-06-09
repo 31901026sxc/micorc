@@ -192,6 +192,22 @@ let rec cStmt stmt (varEnv: VarEnv) (funEnv: FunEnv) : instr list =
         @ [Label labtest]
         @ cExpr e2 varEnv funEnv 
         @ [IFNZRO labbegin]
+    // | Range1(dec,e1,e2,body) ->
+    //     let rec tmp stat =
+    //         match stat with
+    //         | Access (c) -> c             
+    //     let ass = Assign (tmp dec,e1)
+    //     let judge = Prim2 ("<",Access (tmp dec),e2)
+    //     let opera = Assign (tmp dec, Prim2 ("+",Access (tmp dec),ConstInt 1))
+    //     cStmt (For (ass,judge,opera,body)) varEnv funEnv
+    // | Range2(dec,e1,e2,e3,body) ->
+    //     let rec tmp stat =
+    //         match stat with
+    //         | Access (c) -> c             
+    //     let ass = Assign (tmp dec,e1)
+    //     let judge = Prim2 ("<",Access (tmp dec),e2)
+    //     let opera = Assign (tmp dec, Prim2 ("+",Access (tmp dec),e3))
+    //     cStmt (For (ass,judge,opera,body)) varEnv funEnv
     | While (e, body) ->
         let labbegin = newLabel ()
         let labtest = newLabel ()

@@ -53,6 +53,8 @@ and stmt =
   | DoUntil of stmt * expr
   | DoWhile of stmt * expr                                                        
   | For of expr * expr * expr * stmt (* for loop                    *)
+  | Range1 of expr * expr * expr * stmt(* for in range loop          *)
+  | Range2 of expr * expr * expr* expr * stmt(* for in range loop          *)
   | If of expr * stmt * stmt         (* Conditional                 *)
   | While of expr * stmt             (* While loop                  *)
   | Expr of expr                     (* Expression statement   e;   *)
